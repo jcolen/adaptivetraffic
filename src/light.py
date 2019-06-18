@@ -5,21 +5,23 @@ jcolen@uchicago.edu
 light.py
 
 Light represents a single traffic light. A light can connect at least two and up to 
-4 roads. 
+8 roads. 
 
 The roads connected to a given light are at right angles to each other. They are stored in a list
 where the indices correspond to the diagram below:
 
-			  0
+			 0 4 
 
-		3	LIGHT   1
+	  3 7	LIGHT   1 5
 
-			  2
+			 2 6
 
-So for example, if the state of the light is green, a car can go from 3 to 1 or 2. We will add
-left turns and U turns in later. 
+Here, the first index represents roads heading towards the light, and the second index
+represents roads traveling away from the light.
 
-More generally, a car at position n can go from position n to position (n + 2) % 2 or position (n + 3) % 2
+So for example, if the state of the light is green, a car can go from 0 to 6 or 7. We will add left turns and U turns later in some probabilistic model.
+
+More generally, a car at position n can go from position n to position (n + 2) % 4 + 4 or (n + 3) % 4 + 4
 
 The state of the light is stored as an array of two numbers. We will eventually figure out behavior for 
 yellow lights. 
@@ -37,11 +39,12 @@ class Light:
 	'''
 	@param timer - Switch the lights after this many steps
 	'''
-	def __init__(self, timer=5):
-		self.roads = [None] * 4
+	def __init__(self, timer=5, pos=[None, None]):
+		self.roads = [None] * 8
 		self.color = [Color.RED, Color.RED]
 		self.timer = timer
 		self.counter = 0
+		self.x, self.y = pos[0], pos[1]
 
 	def get_light_color(self, road):
 		try:
@@ -57,10 +60,8 @@ class Light:
 			if color == Color.RED:
 				return []
 			roads = []
-			for i, rd in enumerate(self.roads):
-				if rd is None or rd is road or i == (ind + 1) % 2:
-					continue
-				if rd.can_enter(self):
+			for rd in [self.roads[(ind+2)%4+4], self.roads[(ind+3)%4+4]]:
+				if rd is not None:
 					roads.append(rd)
 			return roads
 		except:

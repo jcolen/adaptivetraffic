@@ -17,15 +17,13 @@ from random import randint
 class Car:
 	'''
 	@param road - The road the car is on
-	@param direction - The direction the car is traveling on the road
 	@param position - The position of the car along the road
 	@param speed - the speed of the car along the road in (units/step)
 	@param radius - The size of the car
 	@param accel - The acceleration of the car, in units/step^2
 	'''
-	def __init__(self, road, direction, position=0., speed=0., radius=1., accel=1.):
+	def __init__(self, road, position=0., speed=0., radius=1., accel=1.):
 		self.road = road
-		self.direction = direction
 		
 		self.position = position
 		self.speed = speed
@@ -37,7 +35,7 @@ class Car:
 		#Check whether we need to move to a new road
 		if newpos > self.road.length:
 			newpos -= self.road.length
-			light = self.road.lights[self.direction]
+			light = self.road.lights[1]
 			#Delete ourselves if we are off the grid
 			if light is None:
 				return None
@@ -47,10 +45,7 @@ class Car:
 				print('At an intersection with no options')
 				return None
 			self.road = allowed[randint(0, len(allowed)-1)]
-			self.direction = self.road.enter_from(light)
-			#Delete ourselves if we entered the road from a disallowed light
-			if self.direction == -1:
-				return None
+			
 			#Recur to the next road
 			return self.update(newpos, newvel)
 
@@ -79,7 +74,7 @@ class Car:
 		#Start at the maximum possible acceleration for the car and the given road
 		accel = min(self.accel, self.road.maxspeed - self.speed)
 
-		agents = self.road.get_agents(front_bumper, front_bumper + lookahead, self.direction)
+		agents = self.road.get_agents(front_bumper, front_bumper + lookahead)
 		for agent in agents:
 			if isinstance(agent, Car):
 				#accelerate to match that car's speed
