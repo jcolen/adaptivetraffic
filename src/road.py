@@ -19,12 +19,10 @@ class Road:
 	@param length - The length of the road, in units
 	@param maxspeed - The maximum speed on the road, in units/step
 	'''
-	def __init__(self, length=1, maxspeed=1, pos0=[None, None], pos1=[None, None]):
+	def __init__(self, length=1, maxspeed=1):
 		self.lights = [None] * 2
 		self.length = length
 		self.maxspeed = maxspeed
-		self.x0, self.y0 = pos0[0], pos0[1]
-		self.x1, self.y1 = pos1[0], pos1[1]
 
 	#TODO implement this
 	def get_agents(self, pos1, pos2):

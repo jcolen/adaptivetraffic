@@ -41,7 +41,7 @@ class Light:
 	'''
 	def __init__(self, timer=5, pos=[None, None]):
 		self.roads = [None] * 8
-		self.color = [Color.RED, Color.RED]
+		self.colors = [Color.RED, Color.RED]
 		self.timer = timer
 		self.counter = 0
 		self.x, self.y = pos[0], pos[1]
@@ -49,14 +49,14 @@ class Light:
 	def get_light_color(self, road):
 		try:
 			ind = self.roads.index(road)
-			return self.color(ind % 2)
+			return self.colors[ind % 2]
 		except:
 			return Color.RED
 
 	def get_allowed_roads(self, road):
 		try:
 			ind = self.roads.index(road)
-			color = self.color[ind % 2]
+			color = self.colors[ind % 2]
 			if color == Color.RED:
 				return []
 			roads = []
@@ -65,11 +65,13 @@ class Light:
 					roads.append(rd)
 			return roads
 		except:
-			return []
+			return [] 
 	
 	def act(self):
+		if self.timer < 0:
+			return
 		self.counter += 1
 		if self.counter == self.timer:
-			for i in range(len(self.color)):
-				self.color[i] = Color.RED if self.color[i] == Color.GREEN else Color.GREEN
+			for i in range(len(self.colors)):
+				self.colors[i] = Color.RED if self.colors[i] == Color.GREEN else Color.GREEN
 			self.counter = 0

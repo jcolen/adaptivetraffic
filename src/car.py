@@ -37,7 +37,7 @@ class Car:
 			newpos -= self.road.length
 			light = self.road.lights[1]
 			#Delete ourselves if we are off the grid
-			if light is None:
+			if light is None or light.timer < 0:
 				return None
 			allowed = light.get_allowed_roads(self.road)
 			#Delete ourselves, since this is a bug in the system
