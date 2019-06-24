@@ -78,12 +78,6 @@ class TrafficGrid(nx.DiGraph):
 	def add_car(self, idx0, idx1, **kwargs):
 		self.cars.append(Car((idx0, idx1), **kwargs))
 
-	def get_light_color(self, agent, edge):
-		color = self.nodes[agent]['colors'][(self.edges[edge]['l1'])%2]
-		logger.debug('Light %d\tEdge %s\tColor %s' % 
-			(agent, edge, 'RED' if color == Color.RED else 'GREEN'))
-		return color
-	
 	def get_allowed_roads(self, edge):
 		roads = []
 		light = edge[1]
@@ -98,25 +92,23 @@ class TrafficGrid(nx.DiGraph):
 	
 		return roads
 
-	def get_agents_from(self, edge, x0, x1):
-		road = self.edges[edge]
-		if x1 >= road['length']:
-			agents = [edge[1]]
-			for rd in self.get_allowed_roads(edge):
-				agents += self.get_agents_from(rd, 0, x1-road['length'])
-		else:
-			agents = []
+	def get_nearest_agent(self, edge, x0, x1):
+		#Check first for nearest car on the same road
 		for car in self.cars:
 			if car.edge[0] == edge[0] and car.edge[1] == edge[1]:
 				if car.position >= x0 and car.position <= x1:
-					agents.append(car)
-		return agents
+					return car
+		#Otherwise, return the light at the end of this road
+		#TODO look past light if light is green
+		if x1 >= self.edges[edge]['length']:
+			return edge[1]
+		return None
 
-	def get_agents_ahead(self, car):
-		#The number of units to look ahead is decided by the stopping distnace
+	def get_agent_ahead(self, car):
+		#The maximum number of units to look ahead is decided by the stopping distance
 		front_bumper = car.position + car.radius
-		lookahead = car.speed + car.speed * car.speed / 2. / car.accel + 1.
-		return self.get_agents_from(car.edge, front_bumper, front_bumper+lookahead)
+		lookahead = car.speed + car.speed * car.speed / 2. / car.accel
+		return self.get_nearest_agent(car.edge, front_bumper, front_bumper+lookahead)
 
 	def act_car(self, car, newpos, newvel):
 		road = self.edges[car.edge]
@@ -143,20 +135,24 @@ class TrafficGrid(nx.DiGraph):
 		#Start at the maximum possible acceleration for the car and the given road
 		accel = min(car.accel, self.edges[car.edge]['maxspeed'] - car.speed)
 		
-		agents = self.get_agents_ahead(car)
-		logger.debug('Agents ahead: %s' % str(agents))
-		for agent in agents:
-			if isinstance(agent, Car):
-				#Accelerate to car ahead's speed
-				accel = min(accel, agent.speed - car.speed)
-			else:
-				#If light is red, set to max possible deceleration
-				if self.get_light_color(agent, car.edge) == Color.RED:
-					dist = self.edges[car.edge]['length'] - car.position
-					if dist == 0:
-						accel = 0
-					else:
-						accel = -min(car.accel, car.speed * car.speed / (2 * dist))
+		agent = self.get_agent_ahead(car)
+		if agent is None:
+			logger.debug('Agent ahead: None')
+		elif isinstance(agent, Car):
+			logger.debug('Agent ahead: %s' % str(agent))
+			#Accelerate to car ahead's speed
+			accel = min(accel, agent.speed - car.speed)
+		elif type(agent) is int:
+			color = self.nodes[agent]['colors'][(self.edges[car.edge]['l1'])%2]
+			logger.debug('Agent ahead: Light %d: %s' % 
+				(agent, 'RED' if color == Color.RED else 'GREEN'))
+			#If light is red, set to max possible deceleration
+			if color == Color.RED:
+				dist = self.edges[car.edge]['length'] - car.position
+				if dist == 0:
+					accel = 0
+				else:
+					accel = -min(car.accel, car.speed * car.speed / (2 * dist))
 
 		#Find new position and speed after one time step
 		newpos = car.position + car.speed + 0.5 * accel
@@ -228,7 +224,7 @@ class TrafficGrid(nx.DiGraph):
 			pos0, pos1 = layout[car.edge[0]], layout[car.edge[1]]
 			dist = car.position / self.edges[car.edge]['length']
 			xy[i, :] = pos0 + (pos1 - pos0) * dist
-		ax.scatter(xy[:, 0], xy[:, 1], color='blue')
+		ax.scatter(xy[:, 0], xy[:, 1], color='blue', marker='o', s=500)
 
 	def draw(self):
 		ax = plt.gca()
