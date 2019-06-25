@@ -33,6 +33,7 @@ class TrafficGrid(nx.DiGraph):
 	def __init__(self):
 		super(TrafficGrid, self).__init__()
 		self.cars = []
+		self.layout = None
 
 	'''
 	A light is a node in the directed graph. It stores two colors which rotate on a timer
@@ -60,6 +61,7 @@ class TrafficGrid(nx.DiGraph):
 	'''
 	def add_light(self, idx, colors=[Color.RED, Color.RED], timer=5):
 		self.add_node(idx, colors=colors, timer=timer, counter=0, inc_idxs=[], out_idxs=[])
+		self.layout = None
 	
 	'''
 	A road is an edge in the directed graph. It has the following attributes:
@@ -76,6 +78,7 @@ class TrafficGrid(nx.DiGraph):
 		self.edges[idx0, idx1][1] = idx1
 		self.nodes[idx0]['out_idxs'].append(light0_index)
 		self.nodes[idx1]['inc_idxs'].append(light1_index)
+		self.layout = None
 
 	def add_car(self, idx0, idx1, **kwargs):
 		self.cars.append(Car((idx0, idx1), **kwargs))
@@ -252,37 +255,35 @@ class TrafficGrid(nx.DiGraph):
 		ax.clear()
 		ax.set_axis_off()
 
-		layout = nx.drawing.layout.planar_layout(self)
-		nx.draw_networkx_edges(self, layout, arrows=True)
-		self.draw_lights(ax, layout)
-		self.draw_cars(ax, layout)
-		nx.draw_networkx_labels(self, layout)
+		if self.layout is None:
+			#self.layout = nx.drawing.layout.planar_layout(self)
+			#self.layout = nx.drawing.spring_layout(self)
+			self.layout = nx.spectral_layout(self, weight='length')
+		
+		nx.draw_networkx_edges(self, self.layout, arrows=True)
+		self.draw_lights(ax, self.layout)
+		self.draw_cars(ax, self.layout)
+		nx.draw_networkx_labels(self, self.layout)
 
+#Simulate basic one way road with a light
 if __name__=='__main__':
 	grid = TrafficGrid()
 
-	#TODO Add loading from text (JSON, probably)
 	grid.add_light(0, timer=-1)
-	grid.add_light(1, colors=[Color.GREEN, Color.RED], timer=30)
-	grid.add_light(2, colors=[Color.GREEN, Color.RED], timer=5)
-	grid.add_light(3, timer=-1)
+	grid.add_light(1, colors=[Color.GREEN, Color.RED], timer=5)
+	grid.add_light(2, timer=-1)
 
-	grid.add_road(0, 1, 2, 0, length=10, maxspeed=2)
-	grid.add_road(1, 0, 0, 2, length=10, maxspeed=2)
-	grid.add_road(1, 2, 2, 0, length=10, maxspeed=2)
-	grid.add_road(2, 1, 0, 2, length=10, maxspeed=2)
-	grid.add_road(2, 3, 2, 0, length=5, maxspeed=2)
-	grid.add_road(3, 2, 0, 2, length=5, maxspeed=2)
+	grid.add_road(0, 1, 0, 2, length=10, maxspeed=2)
+	grid.add_road(1, 2, 0, 2, length=10, maxspeed=2)
+
 	
 	grid.add_car(0, 1, speed=1.)
 	grid.add_car(0, 1, speed=1., position=1.)
 	grid.add_car(0, 1, speed=1., position=2.)
 	grid.add_car(0, 1, speed=1., position=3.)
 	grid.add_car(0, 1, speed=1., position=4.)
-	grid.add_car(0, 1, speed=1., position=5.)
-	grid.add_car(0, 1, speed=1., position=6.)
-	grid.add_car(0, 1, speed=0., position=7.5)
-	grid.add_car(0, 1, speed=0.5, position=8.5)
+	grid.add_car(0, 1, speed=0., position=5.5)
+	grid.add_car(0, 1, speed=0.5, position=6.5)
 
 	grid.draw()
 	grid.print_status()
