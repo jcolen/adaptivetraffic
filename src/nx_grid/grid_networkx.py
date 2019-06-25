@@ -24,8 +24,9 @@ class Car:
 
 		self.position = kwargs.get('position', 0.)
 		self.speed = kwargs.get('speed', 0.)
-		self.radius = kwargs.get('radius', 1.)
+		self.radius = kwargs.get('radius', 0.5)
 		self.accel = kwargs.get('accel', 1.)
+		self.lane = kwargs.get('lane', 0.)
 
 class TrafficGrid(nx.DiGraph):
 
@@ -64,12 +65,13 @@ class TrafficGrid(nx.DiGraph):
 	A road is an edge in the directed graph. It has the following attributes:
 		length: The length of the road
 		maxspeed: The speed limit of the road in units/time step
+		lanes: The number of lanes the road has
 		l0:	The outgoing index for this road in the light it leaves from
 		l1: The incoming index for this road in the light it goes to
 	'''
-	def add_road(self, idx0, idx1, light0_index, light1_index, length=1, maxspeed=1):
+	def add_road(self, idx0, idx1, light0_index, light1_index, length=1, maxspeed=1, lanes=1):
 		self.add_edge(idx0, idx1, length=length, maxspeed=maxspeed, 
-						l0=light0_index, l1=light1_index)
+						l0=light0_index, l1=light1_index, lanes=lanes)
 		self.edges[idx0, idx1][0] = idx0
 		self.edges[idx0, idx1][1] = idx1
 		self.nodes[idx0]['out_idxs'].append(light0_index)
@@ -96,7 +98,7 @@ class TrafficGrid(nx.DiGraph):
 		#Check first for nearest car on the same road
 		for car in self.cars:
 			if car.edge[0] == edge[0] and car.edge[1] == edge[1]:
-				if car.position >= x0 and car.position <= x1:
+				if car.position > x0 and car.position <= x1:
 					return car
 		#Otherwise, return the light at the end of this road
 		#TODO look past light if light is green
@@ -106,14 +108,16 @@ class TrafficGrid(nx.DiGraph):
 
 	def get_agent_ahead(self, car):
 		#The maximum number of units to look ahead is decided by the stopping distance
-		front_bumper = car.position + car.radius
-		lookahead = car.speed + car.speed * car.speed / 2. / car.accel
-		return self.get_nearest_agent(car.edge, front_bumper, front_bumper+lookahead)
+		#More specifically, the stopping distance for the maximum possible speed at the 
+		#next timestep
+		maxspeed = min(car.speed + car.accel, self.edges[car.edge]['maxspeed'])
+		lookahead = maxspeed + maxspeed*maxspeed / 2. / car.accel
+		return self.get_nearest_agent(car.edge, car.position, car.position+lookahead)
 
-	def act_car(self, car, newpos, newvel):
+	def act_car(self, car):
 		road = self.edges[car.edge]
-		if newpos > road['length']:
-			newpos -= road['length']
+		if car.newpos > road['length']:
+			car.newpos -= road['length']
 			light = self.nodes[car.edge[1]]
 			#Delete ourselves if we are off the grid
 			if light['timer'] < 0:
@@ -125,40 +129,49 @@ class TrafficGrid(nx.DiGraph):
 				return None
 			newedge = allowed[randint(0, len(allowed) - 1)]
 			car.edge = newedge
-			return self.act_car(car, newpos, newvel)
+			return self.act_car(car)
 
-		car.position = newpos
-		car.speed = newvel
+		car.position = car.newpos
+		car.speed = min(car.newvel, road['maxspeed'])
 		return 0
 
 	def update_car(self, car):
-		#Start at the maximum possible acceleration for the car and the given road
+		#Start at the maximum possible acceleration for the given road
+		accel = self.edges[car.edge]['maxspeed'] - car.speed
 		accel = min(car.accel, self.edges[car.edge]['maxspeed'] - car.speed)
 		
 		agent = self.get_agent_ahead(car)
 		if agent is None:
-			logger.debug('Agent ahead: None')
+			logger.debug('Car %d\tAgent ahead: None' % self.cars.index(car))
 		elif isinstance(agent, Car):
-			logger.debug('Agent ahead: %s' % str(agent))
-			#Accelerate to car ahead's speed
-			accel = min(accel, agent.speed - car.speed)
+			logger.debug('Car %d\tAgent ahead: Car %s' % (self.cars.index(car), self.cars.index(agent)))
+			#Basic Lookahead: Accelerate to car ahead's speed
+			#accel = agent.speed - car.speed
+
+			#More advanced - Lennard Jones acceleration
+			rmin = car.speed * car.speed / (2 * car.accel) + car.radius + agent.radius
+			r = agent.position - car.position
+			#Some proportionality constant needed
+			accel = np.power(rmin, 6) / np.power(r, 7) - np.power(rmin, 12) / np.power(r, 13)
+			logger.debug('Car %d\tLennard-Jones Acceleration: %g' % (self.cars.index(car), accel))
 		elif type(agent) is int:
-			color = self.nodes[agent]['colors'][(self.edges[car.edge]['l1'])%2]
-			logger.debug('Agent ahead: Light %d: %s' % 
-				(agent, 'RED' if color == Color.RED else 'GREEN'))
-			#If light is red, set to max possible deceleration
-			if color == Color.RED:
-				dist = self.edges[car.edge]['length'] - car.position
-				if dist == 0:
-					accel = 0
-				else:
-					accel = -min(car.accel, car.speed * car.speed / (2 * dist))
+			if self.nodes[agent]['timer'] >= 0:
+				color = self.nodes[agent]['colors'][(self.edges[car.edge]['l1'])%2]
+				logger.debug('Car %d\tAgent ahead: Light %d: %s' % 
+					(self.cars.index(car), agent, 'RED' if color == Color.RED else 'GREEN'))
+				#If light is red, set to max possible deceleration
+				if color == Color.RED:
+					dist = self.edges[car.edge]['length'] - car.position - car.radius
+					if dist == 0:
+						accel = 0
+					else:
+						accel = -car.speed * car.speed / (2 * dist)
 
-		#Find new position and speed after one time step
-		newpos = car.position + car.speed + 0.5 * accel
-		newvel = max(car.speed + accel, 0) #Don't allow to go in reverse
-
-		return self.act_car(car, newpos, newvel)
+		#Acceleration is capped by car's parameters
+		accel = min(accel, car.accel) if accel >= 0 else max(accel, -car.accel)
+		#Find new position and speed after one time step. Don't allow reversing
+		car.newpos = max(car.position + car.speed + 0.5 * accel, car.position)
+		car.newvel = max(car.speed + accel, 0)
 
 	def update_light(self, idx):
 		light = self.nodes[idx]	
@@ -171,9 +184,11 @@ class TrafficGrid(nx.DiGraph):
 				light['counter'] = 0
 
 	def update(self):
+		for car in self.cars:
+			self.update_car(car)
 		todelete = []
 		for i, car in enumerate(self.cars):
-			val = self.update_car(car)
+			val = self.act_car(car)
 			if val is None:
 				todelete.append(i)
 		for i in sorted(todelete, reverse=True):
@@ -224,7 +239,13 @@ class TrafficGrid(nx.DiGraph):
 			pos0, pos1 = layout[car.edge[0]], layout[car.edge[1]]
 			dist = car.position / self.edges[car.edge]['length']
 			xy[i, :] = pos0 + (pos1 - pos0) * dist
-		ax.scatter(xy[:, 0], xy[:, 1], color='blue', marker='o', s=500)
+			unit_perp = pos1 - pos0
+			unit_perp[0], unit_perp[1] = unit_perp[1], -unit_perp[0]
+			unit_perp /= np.linalg.norm(unit_perp)
+			xy[i, :] += unit_perp * 0.02 * (car.lane + 1)
+
+		mks = ax.scatter(xy[:, 0], xy[:, 1], color='blue', marker='o')
+		mks.set_zorder(3)
 
 	def draw(self):
 		ax = plt.gca()
@@ -242,20 +263,26 @@ if __name__=='__main__':
 
 	#TODO Add loading from text (JSON, probably)
 	grid.add_light(0, timer=-1)
-	grid.add_light(1, colors=[Color.RED, Color.GREEN], timer=8)
-	grid.add_light(2, colors=[Color.GREEN, Color.RED], timer=3)
+	grid.add_light(1, colors=[Color.GREEN, Color.RED], timer=30)
+	grid.add_light(2, colors=[Color.GREEN, Color.RED], timer=5)
 	grid.add_light(3, timer=-1)
 
-	grid.add_road(0, 1, 2, 0, length=5, maxspeed=2)
-	grid.add_road(1, 0, 0, 2, length=5, maxspeed=2)
+	grid.add_road(0, 1, 2, 0, length=10, maxspeed=2)
+	grid.add_road(1, 0, 0, 2, length=10, maxspeed=2)
 	grid.add_road(1, 2, 2, 0, length=10, maxspeed=2)
 	grid.add_road(2, 1, 0, 2, length=10, maxspeed=2)
 	grid.add_road(2, 3, 2, 0, length=5, maxspeed=2)
 	grid.add_road(3, 2, 0, 2, length=5, maxspeed=2)
 	
-	grid.add_car(0, 1)
-	grid.add_car(0, 1, position=1.)
-	grid.add_car(3, 2)
+	grid.add_car(0, 1, speed=1.)
+	grid.add_car(0, 1, speed=1., position=1.)
+	grid.add_car(0, 1, speed=1., position=2.)
+	grid.add_car(0, 1, speed=1., position=3.)
+	grid.add_car(0, 1, speed=1., position=4.)
+	grid.add_car(0, 1, speed=1., position=5.)
+	grid.add_car(0, 1, speed=1., position=6.)
+	grid.add_car(0, 1, speed=0., position=7.5)
+	grid.add_car(0, 1, speed=0.5, position=8.5)
 
 	grid.draw()
 	grid.print_status()
@@ -264,6 +291,6 @@ if __name__=='__main__':
 		grid.update()
 		grid.print_status()
 		grid.draw()
-		plt.pause(0.5)
+		plt.pause(0.2)
 	
 	plt.show()
