@@ -1,4 +1,4 @@
-from grid_networkx import TrafficGrid, Color, logger
+from grid_networkx import TrafficGrid, GridDrawer, Color, logger
 import matplotlib.pyplot as plt
 
 logger.setLevel('INFO')
@@ -37,26 +37,27 @@ if __name__=='__main__':
 	grid.add_road(4, 1, 2, 0, length=10, maxspeed=2)
 
 	#Horizontal Roads
-	grid.add_road(2, 3, 3, 1, length=5, maxspeed=2)
-	grid.add_road(3, 4, 3, 1, length=5, maxspeed=2)
-	grid.add_road(4, 5, 3, 1, length=5, maxspeed=2)
+	grid.add_road(2, 3, 3, 1, length=10, maxspeed=2)
+	grid.add_road(3, 4, 3, 1, length=10, maxspeed=2)
+	grid.add_road(4, 5, 3, 1, length=10, maxspeed=2)
 
-	grid.add_road(9, 8, 1, 3, length=5, maxspeed=2)
-	grid.add_road(8, 7, 1, 3, length=5, maxspeed=2)
-	grid.add_road(7, 6, 1, 3, length=5, maxspeed=2)
+	grid.add_road(9, 8, 1, 3, length=10, maxspeed=2)
+	grid.add_road(8, 7, 1, 3, length=10, maxspeed=2)
+	grid.add_road(7, 6, 1, 3, length=10, maxspeed=2)
 
 	grid.add_car(0, 3)
 	grid.add_car(3, 7)
 	grid.add_car(2, 3)
 	grid.add_car(3, 4)
 
-	grid.draw()
+	drawer = GridDrawer(grid=grid)
+	drawer.draw()
 	grid.print_status()
 
-	for t in range(10):
+	for t in range(5):
 		grid.update()
 		grid.print_status()
-		grid.draw()
+		drawer.draw()
 		plt.pause(0.5)
 
 	plt.show()
