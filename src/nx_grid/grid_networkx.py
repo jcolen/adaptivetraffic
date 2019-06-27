@@ -124,12 +124,12 @@ class TrafficGrid(nx.DiGraph):
 	Get the nearest agent between position x0 and x1 on a given edge
 	@return Agent Index, Agent Type, Distance
 	'''
-	def get_nearest_agent(self, edge, x0, x1):
+	def get_nearest_agent(self, edge, x0, x1, lane):
 		#Check first for nearest car on the same road
 		for i in self.edges[edge]['cars']:
 			car = self.cars[i]
 			if car['edge'][0] == edge[0] and car['edge'][1] == edge[1]:
-				if car['position'] > x0 and car['position'] <= x1:
+				if car['position'] > x0 and car['position'] <= x1 and car['lane'] == lane:
 					return i, 0, car['position']-car['radius']-x0
 		
 		#Otherwise, Check the light at the end of this road
@@ -142,7 +142,7 @@ class TrafficGrid(nx.DiGraph):
 			#TODO future lookahead will require cars having planned paths
 			best_idx, best_typ, dmin = None, None, 10000
 			for rd in self.get_allowed_roads(edge):
-				idx, typ, dst = self.get_nearest_agent(rd, 0, x1-self.edges[edge]['length'])
+				idx, typ, dst = self.get_nearest_agent(rd, 0, x1-self.edges[edge]['length'], lane)
 				if dst < dmin:
 					best_idx, best_typ, dmin = idx, typ, dst
 			return best_idx, best_typ, dmin+(self.edges[edge]['length']-x0)
@@ -159,7 +159,7 @@ class TrafficGrid(nx.DiGraph):
 		maxspeed = min(car['speed'] + car['accel'], self.edges[car['edge']]['maxspeed'])
 		lookahead = maxspeed + maxspeed*maxspeed / 2. / car['accel']
 		front_bumper = car['position'] + car['radius']
-		return self.get_nearest_agent(car['edge'], front_bumper, front_bumper+lookahead)
+		return self.get_nearest_agent(car['edge'], front_bumper, front_bumper+lookahead, car['lane'])
 
 	'''
 	Have a car act, update it's position/speed, and enter a new road if necessary
@@ -294,6 +294,7 @@ class TrafficGrid(nx.DiGraph):
 			for i in self.edges[road]['cars']:
 				car = self.cars[i]
 				outstr = '\tCar %d\t' % i
+				outstr += 'Lane: %d\t' % car['lane']
 				outstr += 'Pos: %g\t' % car['position']
 				outstr += 'Vel: %g' % car['speed']
 				logger.info(outstr)
@@ -345,7 +346,7 @@ class GridDrawer:
 				car = self.grid.cars[i]
 				edge_info = self.edge_info[car['edge']]
 				center = self.layout[car['edge'][0]] + car['position'] * edge_info['vect']
-				center += edge_info['perp'] * (car_width * car['lane'] + 0.5 * car_width) * edge_info['leng']
+				center += edge_info['perp'] * (car_width * car['lane'] + 0.5 * car_width)
 				wh = np.array([car['radius'] * 2, car_width]) * edge_info['leng']
 				bottom_left = center - 0.5 * wh
 				self.ax.add_patch(mpl.patches.Rectangle(
@@ -400,8 +401,8 @@ if __name__=='__main__':
 	grid.add_light(1, colors=[Color.RED, Color.GREEN], timer=10)
 	grid.add_light(2, timer=-1)
 
-	grid.add_road(0, 1, 0, 2, length=10, maxspeed=2)
-	grid.add_road(1, 2, 0, 2, length=10, maxspeed=2)
+	grid.add_road(0, 1, 0, 2, length=10, maxspeed=2, lanes=2)
+	grid.add_road(1, 2, 0, 2, length=10, maxspeed=2, lanes=2)
 
 	
 	grid.add_car(0, 1, speed=1.)
@@ -409,6 +410,7 @@ if __name__=='__main__':
 	grid.add_car(0, 1, speed=1., position=3.)
 	grid.add_car(0, 1, speed=1., position=4.5)
 	grid.add_car(0, 1, speed=1., position=6.)
+	grid.add_car(0, 1, lane=1)
 
 	drawer = GridDrawer(grid=grid)
 	drawer.draw()
@@ -418,6 +420,6 @@ if __name__=='__main__':
 		grid.update()
 		grid.print_status()
 		drawer.draw()
-		plt.pause(0.5)
+		plt.pause(0.2)
 	
 	plt.show()
