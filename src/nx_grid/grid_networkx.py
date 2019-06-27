@@ -15,7 +15,10 @@ logger.setLevel(logging.DEBUG)
 
 class Color(Enum):
 	RED = 0
-	GREEN = 1
+	YELLOW = 1
+	GREEN = 2
+	LEFT_YELLOW = 3
+	LEFT_GREEN = 4
 
 class TrafficGrid(nx.DiGraph):
 
@@ -35,7 +38,7 @@ class TrafficGrid(nx.DiGraph):
 	Each road specifies which "colors" entry controls its flow
 
 	'''
-	def add_light(self, idx, colors=[Color.RED, Color.RED], timer=5):
+	def add_light(self, idx, colors=[Color.GREEN, Color.RED], timer=5):
 		self.add_node(idx, colors=colors, timer=timer, counter=0)
 	
 	'''
@@ -101,12 +104,19 @@ class TrafficGrid(nx.DiGraph):
 	def get_allowed_roads(self, edge):
 		roads = []
 		light = edge[1]
+		color = self.nodes[light]['colors'][self.edges[edge]['light_idx']]
 		for rd in self.edges(light):
 			#Only turn onto outgoing roads
 			if rd[0] != light:
 				continue
 			#No U-turns
 			if rd[1] == edge[0]:
+				continue
+			#Cannot turn onto red light roads
+			if color == Color.RED:
+				continue
+			#Left turn arrow does not allow going straight
+			if color == Color.LEFT_GREEN and self.edges[edge]['light_idx'] == self.edges[rd]['light_idx']:
 				continue
 			roads.append(rd)
 	
@@ -134,7 +144,8 @@ class TrafficGrid(nx.DiGraph):
 		#Otherwise, Check the light at the end of this road
 		if x1 >= self.edges[edge]['length']:
 			#Stop at the light if it is red
-			if self.get_light_color(edge) == Color.RED:
+			color = self.get_light_color(edge)
+			if color == Color.RED or color == Color.YELLOW:
 				return edge[1], 1, self.edges[edge]['length']-x0
 			
 			#Otherwise, look ahead to the next road
@@ -177,7 +188,7 @@ class TrafficGrid(nx.DiGraph):
 				return None
 
 			allowed = self.get_allowed_roads(car['edge'])
-			#This is a bug - delete car['if this happens
+			#This is a bug - delete car if this happens
 			if len(allowed) == 0:
 				logger.warning('At an intersection with no options')
 				return None
@@ -218,9 +229,15 @@ class TrafficGrid(nx.DiGraph):
 			logger.debug('Car %d - Car %d: %g Optimal Dist: %g Accel: %g' % (car_idx, agent, dist, rmin, accel))
 		elif agent_type == 1:	#type 1 is a light
 			if self.nodes[agent]['timer'] >= 0:
+				logger.debug('Car %d - Light %d: %g' % (car_idx, agent, dist))
+				color = self.get_light_color(car['edge'])
+				#If light is yellow, only slow down if we can stop in front of the light
+				if color == Color.YELLOW and dist != 0:
+					tmp_accel = car['speed'] * car['speed'] / (2 * dist)
+					if tmp_accel <= car['accel']:
+						accel = -tmp_accel
 				#If light is red, stop in front of the light
-				if self.get_light_color(car['edge']) == Color.RED:
-					logger.debug('Car %d - Light %d: %g' % (car_idx, agent, dist))
+				if color == Color.RED:
 					if dist == 0:
 						accel = 0
 					else:
@@ -244,8 +261,15 @@ class TrafficGrid(nx.DiGraph):
 		light['counter'] += 1
 		if light['counter'] == light['timer']:
 			for i in range(len(light['colors'])):
-				light['colors'][i] = Color.RED if light['colors'][i] == Color.GREEN else Color.GREEN
-				light['counter'] = 0
+				if light['colors'][i] == Color.GREEN:
+					light['colors'][i] = Color.YELLOW
+			light['counter'] = -1
+		elif light['counter'] == 0:
+			for i in range(len(light['colors'])):
+				if light['colors'][i] == Color.YELLOW:
+					light['colors'][i] = Color.RED
+				elif light['colors'][i] == Color.RED:
+					light['colors'][i] = Color.GREEN
 
 	'''
 	Update all cars and lights
@@ -329,6 +353,8 @@ class GridDrawer:
 				marker = mpl.markers.MarkerStyle(marker='o', fillstyle='left' if i == 0 else 'right')
 				if color == Color.GREEN:
 					mk = self.ax.scatter(xy[0], xy[1], s=node_size, c='green', marker=marker)
+				elif color == Color.YELLOW:
+					mk = self.ax.scatter(xy[0], xy[1], s=node_size, c='yellow', marker=marker)
 				elif color == Color.RED:
 					mk = self.ax.scatter(xy[0], xy[1], s=node_size, c='red', marker=marker)
 				mk.set_zorder(2)	#Put lights in front of edges
