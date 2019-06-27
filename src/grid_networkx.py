@@ -2,7 +2,6 @@ import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import time
 import logging
 
 from enum import Enum
@@ -11,7 +10,8 @@ from random import randint
 logger = logging.getLogger('root')
 FORMAT = "[%(levelname)s %(filename)s:%(lineno)3s - %(funcName)15s() ] %(message)s"
 logging.basicConfig(format=FORMAT)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
+#logger.setLevel(logging.DEBUG)
 
 class Color(Enum):
 	RED = 0
@@ -95,7 +95,12 @@ class TrafficGrid(nx.DiGraph):
 		self.cars[index]['accel'] = kwargs.get('accel', 1.)
 		self.cars[index]['lane'] = kwargs.get('lane', 0.)
 		self.cars[index]['color'] = kwargs.get('color', 'blue')
-		
+		self.cars[index]['trip_report'] = {(idx0, idx1): {
+			'time': 1., 
+			'avg_speed': self.cars[index]['speed'],
+			'time_stopped': 1 if self.cars[index]['speed'] == 0 else 0
+		}}
+
 		self.edges[idx0, idx1]['cars'].append(index)
 
 	'''
@@ -180,6 +185,9 @@ class TrafficGrid(nx.DiGraph):
 
 		#Handle being at the end of the road
 		if car['newpos'] > road['length']:
+			#Update trip report
+			car['trip_report'][car['edge']]['avg_speed'] /= car['trip_report'][car['edge']]['time']
+
 			car['newpos'] -= road['length']
 			light = self.nodes[car['edge'][1]]
 
@@ -202,6 +210,20 @@ class TrafficGrid(nx.DiGraph):
 
 		car['position'] = car['newpos']
 		car['speed'] = min(car['newvel'], road['maxspeed'])
+
+		#Update trip report
+		if car['edge'] in car['trip_report']:
+			car['trip_report'][car['edge']]['time'] += 1.
+			car['trip_report'][car['edge']]['avg_speed'] += car['speed']
+			if car['speed'] == 0:
+				car['trip_report'][car['edge']]['time_stopped'] += 1
+		else:
+			car['trip_report'][car['edge']] = {
+				'time': 1.,
+				'avg_speed': car['speed'],
+				'time_stopped': 1 if car['speed'] == 0 else 0.
+			}
+
 		return 0
 
 	'''
@@ -293,6 +315,7 @@ class TrafficGrid(nx.DiGraph):
 		#Delete cars as necessary
 		for i in todelete:
 			self.edges[self.cars[i]['edge']]['cars'].remove(i)
+			self.print_trip_report(i)
 			del self.cars[i]
 
 		#Update all lights
@@ -300,6 +323,24 @@ class TrafficGrid(nx.DiGraph):
 			self.update_light(i)
 			light = self.nodes[i]
 	
+	'''
+	Print the trip report of a car before deleting it
+	'''
+	def print_trip_report(self, idx):
+		total_time = 0.
+		avg_speed = 0.
+		total_stopped = 0.
+
+		logger.info('Trip Report for Car %d' % idx)
+		report = self.cars[idx]['trip_report']
+		for rd in report:
+			total_time += report[rd]['time']
+			avg_speed += report[rd]['time'] * report[rd]['avg_speed']
+			total_stopped += report[rd]['time_stopped']
+			logger.info('\tRoad (%d, %d) - Time: %g Avg. Speed: %g Stopped: %g' % 
+				(rd[0], rd[1], report[rd]['time'], report[rd]['avg_speed'], report[rd]['time_stopped']))
+		logger.info('\tTotal - Time: %g Avg. Speed; %g Stopped %g' % (total_time, avg_speed, total_stopped))
+
 	'''
 	Print the status of each car/light
 	'''
@@ -441,7 +482,7 @@ if __name__=='__main__':
 	drawer.draw()
 	grid.print_status()
 
-	for t in range(15):
+	for t in range(25):
 		grid.update()
 		grid.print_status()
 		drawer.draw()
