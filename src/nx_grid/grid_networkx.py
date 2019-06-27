@@ -31,24 +31,12 @@ class TrafficGrid(nx.DiGraph):
 			If timer is less than zero, then this is not a light and is just an 'empty' point
 			This is necessary as all edges/roads must have two endpoints
 		counter: The current count of time steps before a switch
-		inc_idxs: A list of which indices are filled for incoming roads
-		out_idxs: A list of which indices are filled for outgoing roads
 	
-	The 'indices' for incoming or outgoing roads refer to the direction of that road
-	relative to the light. This is important for left/right turns and determining which 
-	road is directed by which light. The indices are as follows:
+	Each road specifies which "colors" entry controls its flow
 
-		  0
-
-	 3	LIGHT  1
-
-		  2
-
-	So indices 0/2 are controlled by one light, and 1/3 are controlled by the other. In
-	general, the road at index i is controlled by colors[i%2]
 	'''
 	def add_light(self, idx, colors=[Color.RED, Color.RED], timer=5):
-		self.add_node(idx, colors=colors, timer=timer, counter=0, inc_idxs=[], out_idxs=[])
+		self.add_node(idx, colors=colors, timer=timer, counter=0)
 	
 	'''
 	A road is an edge in the directed graph. It has the following attributes:
@@ -56,16 +44,26 @@ class TrafficGrid(nx.DiGraph):
 		maxspeed: The speed limit of the road in units/time step
 		lanes: The number of lanes the road has
 		car: a list of cars located on that edge
+		light_idx: The "colors" index that controls its flow
 		l0:	The outgoing index for this road in the light it leaves from
 		l1: The incoming index for this road in the light it goes to
 	'''
-	def add_road(self, idx0, idx1, light0_index, light1_index, length=1, maxspeed=1, lanes=1):
+	def add_road(self, idx0, idx1, light_idx, length=1, maxspeed=1, lanes=1):
+		if idx0 not in self.nodes:
+			logger.error('Light %d is not in the grid!')
+			raise ValueError
+		if idx1 not in self.nodes:
+			logger.error('Light %d is not in the grid!')
+			raise ValueError
+		if light_idx < 0 or light_idx >= len(self.nodes[idx1]['colors']):
+			logger.error('Invalid light index %d for road (%d, %d). Maximum value: %d' 
+				% (light_idx, idx0, idx1, len(self.nodes[idx1]['colors'])-1))
+			raise ValueError
+
 		self.add_edge(idx0, idx1, length=length, maxspeed=maxspeed, 
-						l0=light0_index, l1=light1_index, lanes=lanes, cars=[])
+						light_idx=light_idx, lanes=lanes, cars=[])
 		self.edges[idx0, idx1][0] = idx0
 		self.edges[idx0, idx1][1] = idx1
-		self.nodes[idx0]['out_idxs'].append(light0_index)
-		self.nodes[idx1]['inc_idxs'].append(light1_index)
 
 	'''
 	A car is an entry in the cars dictionary. It has the following attributes:
@@ -80,6 +78,7 @@ class TrafficGrid(nx.DiGraph):
 		index = kwargs.get('index', len(self.cars))
 		#Cannot doubly add a car
 		if 'index' in kwargs and index in self.cars:
+			logger.error('Car %d has already been added!' % index)
 			raise KeyError
 		#Find next available index
 		while index in self.cars:
@@ -118,7 +117,7 @@ class TrafficGrid(nx.DiGraph):
 	If the edge is coming in at direction i, the light color is colors[i%2]
 	'''
 	def get_light_color(self, edge):
-		return self.nodes[edge[1]]['colors'][(self.edges[edge]['l1'])%2]
+		return self.nodes[edge[1]]['colors'][self.edges[edge]['light_idx']]
 
 	'''
 	Get the nearest agent between position x0 and x1 on a given edge
@@ -401,8 +400,8 @@ if __name__=='__main__':
 	grid.add_light(1, colors=[Color.RED, Color.GREEN], timer=10)
 	grid.add_light(2, timer=-1)
 
-	grid.add_road(0, 1, 0, 2, length=10, maxspeed=2, lanes=2)
-	grid.add_road(1, 2, 0, 2, length=10, maxspeed=2, lanes=2)
+	grid.add_road(0, 1, 0, length=20, maxspeed=5, lanes=2)
+	grid.add_road(1, 2, 0, length=20, maxspeed=5, lanes=2)
 
 	
 	grid.add_car(0, 1, speed=1.)
