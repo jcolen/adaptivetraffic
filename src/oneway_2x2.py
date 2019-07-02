@@ -45,16 +45,16 @@ if __name__=='__main__':
 	grid.add_road(8, 7, 1, length=10, maxspeed=2)
 	grid.add_road(7, 6, 1, length=10, maxspeed=2)
 
-	grid.add_car(0, 3)
-	grid.add_car(3, 7)
-	grid.add_car(2, 3)
-	grid.add_car(3, 4)
+	grid.add_car(0, path=[0, 3, 7])
+	grid.add_car(3, idx1=7)
+	grid.add_car(2, idx1=3)
+	grid.add_car(3, idx1=4)
 
 	drawer = GridDrawer(grid=grid)
 	drawer.draw()
 	grid.print_status()
 
-	for t in range(5):
+	for t in range(15):
 		grid.update()
 		grid.print_status()
 		drawer.draw()
