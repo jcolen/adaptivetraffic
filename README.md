@@ -18,7 +18,7 @@ Next, roads should be added using the function below. See the code for more deta
 
 `grid.add_road(light1, light2, direction, **kwargs)`
 
-Finally, cars can be added using `grid.add_car(light0, light1, **kwargs)`. Cars are by default placed at position 0 along a given road with speed 0.
+Finally, cars can be added using `grid.add_car(light0, **kwargs)`. Cars are by default placed at position 0 along a given road with speed 0.
 
 ### Simulating traffic
 
