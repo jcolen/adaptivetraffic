@@ -104,6 +104,14 @@ class TrafficGrid(nx.DiGraph):
 		self.edges[idx0, idx1]['cars'].append(index)
 
 	'''
+	Get the average speed of cars on a given edge
+	'''
+	def get_average_speed(self, edge):
+		if len(self.edges[edge]['cars']) == 0:
+			return 0
+		return np.mean([self.cars[car]['speed'] for car in self.edges[edge]['cars']])
+
+	'''
 	List the roads which can be turned into from a given edge
 	'''
 	def get_allowed_roads(self, edge):
@@ -354,7 +362,7 @@ class TrafficGrid(nx.DiGraph):
 		for road in self.edges:
 			if len(self.edges[road]['cars']) == 0:
 				continue
-			logger.info('On Road %s' % str(road))
+			logger.info('On Road %s\tAverage Speed: %g' % (str(road), self.get_average_speed(road)))
 			for i in self.edges[road]['cars']:
 				car = self.cars[i]
 				outstr = '\tCar %d\t' % i
